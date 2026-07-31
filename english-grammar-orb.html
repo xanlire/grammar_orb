@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grammar Orb — English progress tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d0f12;
+    --fg:#e8e9ec;
+    --dim:#7b8291;
+    --line:rgba(255,255,255,.10);
+    --accent:#6ee7a8;
+    --panel:#14171c;
+    --ui:"Inter",ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,sans-serif;
+    --display:"Instrument Serif",ui-serif,Georgia,"Times New Roman",serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#fbfbfc; --fg:#1a1d22; --dim:#8b909b;
+      --line:rgba(0,0,0,.12); --accent:#12a05f; --panel:#ffffff;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:14px/1.6 var(--ui);
+    overflow:hidden; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  canvas.dragging{cursor:grabbing}
+
+  /* ---- header ---- */
+  header{
+    position:fixed;top:0;left:0;right:0;padding:22px 26px;
+    display:flex;align-items:baseline;gap:14px;pointer-events:none;z-index:5;
+  }
+  h1{font:400 22px/1 var(--display);letter-spacing:.01em;margin:0}
+  header .sub{color:var(--dim);font-size:12px}
+
+  /* ---- progress ---- */
+  .progress{
+    position:fixed;left:26px;bottom:24px;z-index:5;width:220px;
+  }
+  .progress .row{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:7px}
+  .bar{height:2px;background:var(--line);border-radius:2px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .35s ease}
+  .progress button{
+    margin-top:12px;background:none;border:1px solid var(--line);color:var(--dim);
+    font:inherit;font-size:11px;padding:4px 9px;border-radius:99px;cursor:pointer;
+  }
+  .progress button:hover{color:var(--fg);border-color:var(--fg)}
+
+  .hint{position:fixed;right:26px;bottom:24px;color:var(--dim);font-size:11px;z-index:4}
+
+  /* ---- detail panel ---- */
+  #panel{
+    position:fixed;top:0;right:0;height:100%;width:min(400px,92vw);
+    background:var(--panel);border-left:1px solid var(--line);
+    padding:34px 30px;overflow-y:auto;z-index:10;
+    transform:translateX(102%);opacity:0;
+    transition:transform .42s cubic-bezier(.22,.8,.24,1),opacity .3s ease;
+  }
+  #panel.open{transform:none;opacity:1}
+  #panel .close{
+    position:absolute;top:20px;right:22px;background:none;border:0;color:var(--dim);
+    font-size:20px;line-height:1;cursor:pointer;padding:4px;
+  }
+  #panel .close:hover{color:var(--fg)}
+  .tag{
+    display:inline-block;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--dim);margin-bottom:10px;
+  }
+  #panel h2{font:400 32px/1.15 var(--display);margin:0 0 22px;letter-spacing:.01em}
+  .sec{margin-bottom:20px}
+  .sec h3{
+    font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+    font-weight:600;margin:0 0 6px;
+  }
+  .sec p{margin:0;color:var(--fg)}
+  .sec code{
+    font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:var(--line);padding:2px 6px;border-radius:4px;
+  }
+  ul.ex{list-style:none;margin:0;padding:0}
+  ul.ex li{padding:8px 0;border-bottom:1px solid var(--line);color:var(--fg)}
+  ul.ex li:last-child{border-bottom:0}
+  ul.ex li span{display:block;color:var(--dim);font-size:12px;margin-top:2px}
+  .learnBtn{
+    width:100%;margin-top:14px;padding:11px;border-radius:8px;cursor:pointer;
+    font:inherit;font-weight:500;border:1px solid var(--line);
+    background:none;color:var(--fg);transition:.2s;
+  }
+  .learnBtn:hover{border-color:var(--fg)}
+  .learnBtn.on{background:var(--accent);border-color:var(--accent);color:#06130c}
+  .related{display:flex;flex-wrap:wrap;gap:6px}
+  .related button{
+    font:inherit;font-size:11.5px;background:none;border:1px solid var(--line);
+    color:var(--dim);border-radius:99px;padding:3px 10px;cursor:pointer;
+  }
+  .related button:hover{color:var(--fg);border-color:var(--fg)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Grammar Orb</h1>
+  <span class="sub">drag to rotate · click a topic</span>
+</header>
+
+<canvas id="c"></canvas>
+
+<div class="progress">
+  <div class="row"><span id="pLabel">0 / 0 learned</span><span id="pPct">0%</span></div>
+  <div class="bar"><i id="pBar"></i></div>
+  <button id="reset">reset progress</button>
+</div>
+<div class="hint">scroll to zoom</div>
+
+<aside id="panel">
+  <button class="close" id="close">&times;</button>
+  <div id="pBody"></div>
+</aside>
+
+<script>
+/* ------------------------------------------------------------------ *
+ *  DATA — grammar topics grouped into clusters (clusters sit together)
+ * ------------------------------------------------------------------ */
+const CLUSTERS = [
+  {id:"present", name:"Present tenses",     hue:172},
+  {id:"past",    name:"Past tenses",        hue:198},
+  {id:"future",  name:"Future forms",       hue:224},
+  {id:"cond",    name:"Conditionals",       hue:262},
+  {id:"modal",   name:"Modal verbs",        hue:292},
+  {id:"nonfin",  name:"Gerund & infinitive",hue:330},
+  {id:"noun",    name:"Nouns & articles",   hue:14},
+  {id:"pron",    name:"Pronouns",           hue:32},
+  {id:"clause",  name:"Clauses & reporting",hue:48},
+  {id:"voice",   name:"Passive & causative",hue:96},
+  {id:"adj",     name:"Adjectives & adverbs",hue:120},
+  {id:"sent",    name:"Sentence structure", hue:146},
+  {id:"prep",    name:"Prepositions",       hue:8}
+];
+
+const TOPICS = [
+/* ---- present ---- */
+{id:"pres-simple",c:"present",label:"Present Simple",
+ form:"V / V-s (he, she, it) · do / does for questions and negatives",
+ use:"Facts, habits, routines, timetables, permanent states. Signal words: always, usually, every day, never.",
+ ex:[["She works in a bank.","permanent situation"],["Water boils at 100°C.","general truth"],["The train leaves at 7.","timetable"]]},
+{id:"pres-cont",c:"present",label:"Present Continuous",
+ form:"am / is / are + V-ing",
+ use:"Action happening now or around now, temporary situations, changing trends, and annoying repeated habits with 'always'.",
+ ex:[["I'm reading a great book.","around now, not this second"],["He's staying with friends this week.","temporary"],["She's always losing her keys!","irritation"]]},
+{id:"pres-perf",c:"present",label:"Present Perfect",
+ form:"have / has + V3 (past participle)",
+ use:"Past action with a present result, life experience, unfinished time period. Use with ever, never, just, already, yet, since, for. Never with a finished time expression (yesterday, in 2010).",
+ ex:[["I've lost my wallet.","result: no wallet now"],["Have you ever been to Japan?","experience"],["She has lived here since 2019.","started in past, still true"]]},
+{id:"pres-perf-cont",c:"present",label:"Present Perfect Continuous",
+ form:"have / has been + V-ing",
+ use:"Emphasis on the duration of an activity that started in the past and continues, or has just stopped with a visible result.",
+ ex:[["I've been waiting for two hours.","duration"],["Your eyes are red — have you been crying?","recent activity, visible result"]]},
+{id:"stative",c:"present",label:"Stative Verbs",
+ form:"know, like, believe, own, need, seem, hear, understand — normally simple, not continuous",
+ use:"Verbs of thought, emotion, senses and possession do not take continuous forms. Some change meaning when they do.",
+ ex:[["I know the answer.","not 'I am knowing'"],["I'm thinking about it.","action = ok"],["I think you're right.","opinion = state"]]},
+
+/* ---- past ---- */
+{id:"past-simple",c:"past",label:"Past Simple",
+ form:"V2 (regular: V-ed) · did for questions and negatives",
+ use:"Finished action at a finished time. The default storytelling tense. Signal words: yesterday, last week, in 2015, ago.",
+ ex:[["We moved to Berlin in 2015.","finished time"],["Did you call her?","question"],["He didn't come.","negative — base verb after did"]]},
+{id:"past-cont",c:"past",label:"Past Continuous",
+ form:"was / were + V-ing",
+ use:"Background action in progress in the past, often interrupted by a Past Simple action. Also sets a scene.",
+ ex:[["I was cooking when the phone rang.","interrupted"],["It was raining all evening.","background"]]},
+{id:"past-perf",c:"past",label:"Past Perfect",
+ form:"had + V3",
+ use:"The earlier of two past actions — it makes the order clear. Common after when, because, after, by the time.",
+ ex:[["The train had left when we arrived.","left first"],["She was upset because she had failed the test.","cause happened earlier"]]},
+{id:"past-perf-cont",c:"past",label:"Past Perfect Continuous",
+ form:"had been + V-ing",
+ use:"Duration of an activity up to a point in the past, often explaining a past result.",
+ ex:[["He was tired — he had been driving for six hours.","duration before that moment"]]},
+{id:"used-to",c:"past",label:"used to / would",
+ form:"used to + base verb · would + base verb",
+ use:"Past habits or states that are no longer true. 'used to' works for both habits and states; 'would' only for repeated actions, not states.",
+ ex:[["I used to smoke.","stopped now"],["We would swim every summer.","repeated action"],["I used to have long hair.","state — 'would' not possible"]]},
+
+/* ---- future ---- */
+{id:"will",c:"future",label:"will (Future Simple)",
+ form:"will + base verb",
+ use:"Decision made at the moment of speaking, prediction based on opinion, promise, offer, refusal.",
+ ex:[["I'll help you with that.","spontaneous offer"],["I think it will rain.","opinion-based prediction"]]},
+{id:"going-to",c:"future",label:"be going to",
+ form:"am / is / are going to + base verb",
+ use:"Plan or intention decided before speaking; prediction from present evidence.",
+ ex:[["We're going to buy a house.","already decided"],["Look at those clouds — it's going to pour.","evidence you can see"]]},
+{id:"fut-cont",c:"future",label:"Future Continuous",
+ form:"will be + V-ing",
+ use:"Action in progress at a specific future time; also a polite way to ask about someone's plans.",
+ ex:[["This time tomorrow I'll be flying to Rome.","in progress then"],["Will you be using the car tonight?","polite enquiry"]]},
+{id:"fut-perf",c:"future",label:"Future Perfect",
+ form:"will have + V3",
+ use:"Action that will be completed before a point in the future. Usually with 'by' + time.",
+ ex:[["By June I'll have finished the course.","done before June"]]},
+{id:"pres-for-future",c:"future",label:"Present forms for future",
+ form:"Present Continuous (arrangements) · Present Simple (timetables)",
+ use:"Fixed personal arrangements use Present Continuous; scheduled public events use Present Simple.",
+ ex:[["I'm meeting Anna at six.","arrangement"],["The film starts at 8.30.","schedule"]]},
+
+/* ---- conditionals ---- */
+{id:"cond0",c:"cond",label:"Zero Conditional",
+ form:"If + Present Simple, Present Simple",
+ use:"General truths, scientific facts, rules where the result is always the same. 'if' can be replaced by 'when'.",
+ ex:[["If you heat ice, it melts.","always true"],["If I drink coffee late, I can't sleep.","personal rule"]]},
+{id:"cond1",c:"cond",label:"First Conditional",
+ form:"If + Present Simple, will + base verb",
+ use:"Real, likely future possibility and its consequence. Modals (may, might, can) and imperatives also work in the result clause.",
+ ex:[["If it rains, we'll stay home.","likely future"],["If you see her, tell her to call me.","imperative result"]]},
+{id:"cond2",c:"cond",label:"Second Conditional",
+ form:"If + Past Simple, would + base verb",
+ use:"Unreal, unlikely or imaginary present/future situations. 'were' for all persons in careful English.",
+ ex:[["If I won the lottery, I'd travel the world.","imaginary"],["If I were you, I'd apologise.","advice"]]},
+{id:"cond3",c:"cond",label:"Third Conditional",
+ form:"If + Past Perfect, would have + V3",
+ use:"Imaginary past — the opposite of what really happened. Often expresses regret or criticism.",
+ ex:[["If I had studied, I would have passed.","but I didn't study"],["She wouldn't have missed the flight if she'd left earlier.","regret"]]},
+{id:"cond-mixed",c:"cond",label:"Mixed Conditionals",
+ form:"If + Past Perfect, would + base verb · If + Past Simple, would have + V3",
+ use:"Past condition with a present result, or present condition with a past result.",
+ ex:[["If I had taken the job, I'd be in Paris now.","past cause, present result"],["If he weren't so shy, he would have spoken up.","present state, past result"]]},
+{id:"wish",c:"cond",label:"wish / if only",
+ form:"wish + Past Simple · wish + Past Perfect · wish + would",
+ use:"Regret about the present, regret about the past, or annoyance at someone else's behaviour.",
+ ex:[["I wish I had more time.","present regret"],["I wish I hadn't said that.","past regret"],["I wish you would stop shouting.","annoyance, other person"]]},
+
+/* ---- modals ---- */
+{id:"mod-ability",c:"modal",label:"Ability: can / could",
+ form:"can / can't + base verb · could / couldn't · be able to",
+ use:"Present or general ability with can, past or hypothetical ability with could. 'was able to' for a single past success.",
+ ex:[["She can speak three languages.","present ability"],["I could swim at five.","general past ability"],["He was able to escape.","one specific success"]]},
+{id:"mod-permission",c:"modal",label:"Permission & requests",
+ form:"can / could / may I ...? · Would you ...?",
+ use:"Asking for and giving permission, and making requests. 'could' and 'may' are more formal than 'can'.",
+ ex:[["Can I borrow your pen?","informal"],["May I come in?","formal"],["Could you open the window?","polite request"]]},
+{id:"mod-obligation",c:"modal",label:"Obligation: must / have to",
+ form:"must + base verb · have to + base verb · mustn't vs don't have to",
+ use:"'must' = internal or speaker's obligation; 'have to' = external rule. Careful: mustn't = prohibition, don't have to = no obligation.",
+ ex:[["I must call my mother.","I feel I should"],["You have to wear a helmet.","the rule says so"],["You mustn't smoke here.","forbidden"],["You don't have to come.","optional"]]},
+{id:"mod-advice",c:"modal",label:"Advice: should / ought to",
+ form:"should / shouldn't + base verb · ought to · had better",
+ use:"Recommendations and mild obligation. 'had better' is stronger and hints at a bad consequence.",
+ ex:[["You should see a doctor.","advice"],["You'd better hurry.","warning"]]},
+{id:"mod-deduction",c:"modal",label:"Deduction: must / might / can't",
+ form:"must / may / might / could / can't + base verb",
+ use:"How certain you are about a present situation. must = sure it's true; can't = sure it's false; might/could = possible.",
+ ex:[["He must be tired — he's been up all night.","certain"],["She can't be at home; her car is gone.","impossible"],["It might rain later.","possible"]]},
+{id:"mod-perfect",c:"modal",label:"Modal + have + V3",
+ form:"must have / can't have / might have / should have + V3",
+ use:"Deduction or criticism about the past. 'should have' = it didn't happen but was a good idea.",
+ ex:[["She must have forgotten.","sure about the past"],["You should have told me.","criticism — you didn't"],["He might have missed the bus.","past possibility"]]},
+
+/* ---- gerund & infinitive ---- */
+{id:"gerund",c:"nonfin",label:"Gerund (-ing)",
+ form:"V-ing used as a noun",
+ use:"As the subject of a sentence, after prepositions, and after verbs like enjoy, avoid, mind, suggest, finish, keep.",
+ ex:[["Swimming is good for you.","subject"],["I'm interested in learning Greek.","after preposition"],["She avoided answering.","after 'avoid'"]]},
+{id:"infinitive",c:"nonfin",label:"Infinitive (to + V)",
+ form:"to + base verb",
+ use:"After verbs like want, decide, hope, promise, agree; after adjectives; and to express purpose.",
+ ex:[["I decided to leave.","after 'decide'"],["It's hard to explain.","after adjective"],["I came here to study.","purpose"]]},
+{id:"ger-vs-inf",c:"nonfin",label:"Gerund vs Infinitive",
+ form:"remember / forget / stop / try / regret + -ing or to + V",
+ use:"Some verbs take both forms with different meanings: -ing refers back, to + V refers forward.",
+ ex:[["I stopped smoking.","quit the habit"],["I stopped to smoke.","paused in order to smoke"],["Remember to lock the door.","don't forget the future task"],["I remember locking it.","memory of a past action"]]},
+{id:"bare-inf",c:"nonfin",label:"Bare infinitive",
+ form:"base verb with no 'to'",
+ use:"After modal verbs, after let / make / help, and after see, hear, watch when the whole action was witnessed.",
+ ex:[["She let me go.","after 'let'"],["I saw him leave.","complete action"],["I saw him leaving.","action in progress"]]},
+{id:"participle-clause",c:"nonfin",label:"Participle clauses",
+ form:"V-ing (active) · V3 (passive) replacing a full clause",
+ use:"Shortens two clauses with the same subject. Common in writing to give reason, time or accompanying action.",
+ ex:[["Feeling tired, she went to bed.","because she felt tired"],["Built in 1900, the house needs repair.","passive, which was built"]]},
+
+/* ---- nouns & articles ---- */
+{id:"art-a",c:"noun",label:"a / an",
+ form:"a + consonant sound · an + vowel sound",
+ use:"First mention of a singular countable noun, jobs, and general classification. Sound decides, not spelling.",
+ ex:[["I saw a dog.","first mention"],["She's an engineer.","job"],["an hour, a university","sound, not letter"]]},
+{id:"art-the",c:"noun",label:"the",
+ form:"the + any noun",
+ use:"Something already mentioned or known, unique things, superlatives, rivers, oceans, mountain ranges.",
+ ex:[["The dog I saw was huge.","second mention"],["the sun, the best day","unique / superlative"]]},
+{id:"art-zero",c:"noun",label:"Zero article",
+ form:"no article",
+ use:"Plural and uncountable nouns in general statements, most countries, cities, languages, meals, and institutions used for their purpose.",
+ ex:[["Dogs are loyal.","general truth"],["I go to school.","the purpose, not the building"],["He speaks Spanish.","language"]]},
+{id:"countable",c:"noun",label:"Countable / uncountable",
+ form:"a book / books · water, advice, information (no plural)",
+ use:"Uncountable nouns take no a/an and no plural -s. Quantify them with a piece of, a bit of, some.",
+ ex:[["I need some advice.","not 'an advice'"],["Two pieces of furniture.","counting an uncountable"]]},
+{id:"quantifiers",c:"noun",label:"Quantifiers",
+ form:"much / many · little / few · some / any · a lot of",
+ use:"much + uncountable, many + countable. a few / a little = some; few / little = almost none. some in statements and offers, any in negatives and questions.",
+ ex:[["How much water?","uncountable"],["A few friends came.","some — positive"],["Few friends came.","almost none — negative feel"]]},
+{id:"possessive",c:"noun",label:"Possessives",
+ form:"'s / s' · my, your, his · mine, yours, his · of",
+ use:"'s for people and animals, of for things. Possessive adjectives sit before a noun; pronouns stand alone.",
+ ex:[["Anna's car","person"],["the roof of the house","thing"],["It's mine.","pronoun — no noun after"]]},
+
+/* ---- pronouns ---- */
+{id:"pron-personal",c:"pron",label:"Subject & object pronouns",
+ form:"I / me, he / him, they / them",
+ use:"Subject form before the verb, object form after the verb or a preposition.",
+ ex:[["She called me.","object after verb"],["Between you and me.","object after preposition"]]},
+{id:"pron-reflexive",c:"pron",label:"Reflexive pronouns",
+ form:"myself, yourself, himself, ourselves, themselves",
+ use:"When subject and object are the same person, or for emphasis. 'by myself' = alone.",
+ ex:[["I hurt myself.","same person"],["I did it myself.","emphasis"],["She lives by herself.","alone"]]},
+{id:"pron-indef",c:"pron",label:"someone / anyone / no one",
+ form:"some- / any- / no- / every- + -one, -body, -thing, -where",
+ use:"some- in positive sentences and offers, any- in negatives and questions, no- carries the negative alone.",
+ ex:[["Someone called you.","positive"],["I didn't see anything.","one negative only"],["Nobody knows.","verb stays positive"]]},
+{id:"pron-relative",c:"pron",label:"Relative pronouns",
+ form:"who, which, that, whose, where, when",
+ use:"who for people, which for things, that for both in defining clauses, whose for possession.",
+ ex:[["The man who called is my boss.","people"],["The book which I read.","things"],["The girl whose bag was stolen.","possession"]]},
+
+/* ---- clauses & reporting ---- */
+{id:"rel-defining",c:"clause",label:"Defining relative clauses",
+ form:"noun + who / which / that + clause · no commas",
+ use:"Gives essential information — without it you don't know which person or thing is meant. The pronoun can be dropped when it is the object.",
+ ex:[["The woman who lives next door is a vet.","identifies which woman"],["The film (that) we saw was long.","object — pronoun optional"]]},
+{id:"rel-nondefining",c:"clause",label:"Non-defining relative clauses",
+ form:"noun, which / who + clause, · always commas · never 'that'",
+ use:"Adds extra, non-essential information. Remove it and the sentence still identifies its subject.",
+ ex:[["My brother, who lives in Rome, is a chef.","extra detail"],["The car, which was new, broke down.","'that' impossible here"]]},
+{id:"reported",c:"clause",label:"Reported speech",
+ form:"said (that) + backshifted tense · pronoun and time words change",
+ use:"Repeating what someone said. Tenses usually shift one step back; tomorrow becomes the next day, here becomes there.",
+ ex:[["\"I'm tired.\" → He said he was tired.","present becomes past"],["\"I saw her.\" → She said she had seen her.","past becomes past perfect"]]},
+{id:"reported-q",c:"clause",label:"Reported questions",
+ form:"asked + if / whether or question word + subject + verb",
+ use:"No auxiliary 'do', no inversion, no question mark — the word order becomes statement order.",
+ ex:[["\"Where do you live?\" → He asked where I lived.","statement order"],["\"Are you ready?\" → She asked if I was ready.","yes/no becomes 'if'"]]},
+{id:"time-clauses",c:"clause",label:"Future time clauses",
+ form:"when / as soon as / until / before / after + Present Simple",
+ use:"After these conjunctions, use a present tense for future meaning — never 'will'.",
+ ex:[["I'll call you when I arrive.","not 'when I will arrive'"],["Wait until he finishes.","present for future"]]},
+{id:"purpose",c:"clause",label:"Purpose & result",
+ form:"to / in order to / so as to · so that + clause · so ... that",
+ use:"'to + verb' and 'so that + clause' express purpose; 'so / such ... that' expresses result.",
+ ex:[["I left early to catch the train.","purpose"],["I left early so that I could catch it.","purpose with a subject"],["It was so cold that we stayed in.","result"]]},
+
+/* ---- passive & causative ---- */
+{id:"passive",c:"voice",label:"Passive voice",
+ form:"be + V3 (+ by agent)",
+ use:"Used when the doer is unknown, obvious or unimportant, and to keep the focus on the affected thing. Common in formal and scientific writing.",
+ ex:[["The window was broken.","doer unknown"],["English is spoken here.","doer unimportant"],["It was written by Orwell.","agent matters"]]},
+{id:"passive-tenses",c:"voice",label:"Passive in all tenses",
+ form:"is done · is being done · was done · has been done · will be done · must be done",
+ use:"Only 'be' changes — the main verb stays as V3. Continuous perfect passives are avoided as clumsy.",
+ ex:[["The road is being repaired.","present continuous passive"],["It has been sold.","present perfect passive"],["It must be finished today.","modal passive"]]},
+{id:"causative",c:"voice",label:"Causative have / get",
+ form:"have / get + object + V3",
+ use:"Someone else does the job for you. 'get' is more informal. Also for unpleasant things that happen to you.",
+ ex:[["I had my hair cut.","the hairdresser did it"],["We got the car fixed.","informal"],["He had his phone stolen.","misfortune"]]},
+{id:"passive-report",c:"voice",label:"Impersonal passive",
+ form:"It is said that ... · He is said to ...",
+ use:"Reporting general opinion or rumour without naming a source. Common in news writing.",
+ ex:[["It is believed that he left the country.","impersonal"],["She is said to be very rich.","subject + to-infinitive"]]},
+
+/* ---- adjectives & adverbs ---- */
+{id:"comparative",c:"adj",label:"Comparatives",
+ form:"-er than · more + adjective + than · as ... as",
+ use:"Comparing two things. One syllable takes -er, three or more take 'more'; 'as ... as' shows equality.",
+ ex:[["This is cheaper than that.","short adjective"],["She's more careful than me.","long adjective"],["It's not as cold as yesterday.","equality"]]},
+{id:"superlative",c:"adj",label:"Superlatives",
+ form:"the + -est · the most + adjective",
+ use:"Comparing one thing to a whole group. Always with 'the'; often followed by in + place or of + group.",
+ ex:[["the tallest building in the city","-est"],["the most interesting film of the year","most"]]},
+{id:"adj-order",c:"adj",label:"Adjective order",
+ form:"opinion – size – age – shape – colour – origin – material – purpose",
+ use:"When several adjectives modify one noun, English follows this fixed order and normally uses no commas.",
+ ex:[["a lovely little old round Italian table","full sequence"],["a big black leather bag","size, colour, material"]]},
+{id:"adv-frequency",c:"adj",label:"Adverbs of frequency",
+ form:"always, usually, often, sometimes, rarely, never",
+ use:"Go before the main verb but after 'be' and after the first auxiliary.",
+ ex:[["I always drink coffee.","before main verb"],["She is never late.","after 'be'"],["I have often wondered.","after auxiliary"]]},
+{id:"so-such",c:"adj",label:"so / such",
+ form:"so + adjective/adverb · such + (a) + adjective + noun",
+ use:"Both intensify. 'so' takes an adjective alone; 'such' takes a noun phrase.",
+ ex:[["It was so hot.","adjective"],["It was such a hot day.","noun phrase"]]},
+{id:"too-enough",c:"adj",label:"too / enough",
+ form:"too + adjective · adjective + enough · enough + noun",
+ use:"'too' = more than needed (negative); 'enough' = the right amount. Position differs: enough follows adjectives but precedes nouns.",
+ ex:[["It's too expensive.","more than acceptable"],["He isn't old enough.","after adjective"],["We have enough time.","before noun"]]},
+
+/* ---- sentence structure ---- */
+{id:"word-order",c:"sent",label:"Word order (SVOMPT)",
+ form:"Subject – Verb – Object – Manner – Place – Time",
+ use:"The basic English order. Nothing normally separates the verb from its object; time can move to the front for emphasis.",
+ ex:[["She read the letter quickly at home last night.","full order"],["Yesterday we left early.","time fronted"]]},
+{id:"questions",c:"sent",label:"Question formation",
+ form:"(Wh-) + auxiliary + subject + main verb",
+ use:"Invert the subject and the auxiliary. If the question word is the subject, no 'do' and no inversion.",
+ ex:[["Where did you go?","auxiliary + subject"],["Who called you?","subject question — no 'did'"]]},
+{id:"tags",c:"sent",label:"Question tags",
+ form:"positive statement + negative tag · negative statement + positive tag",
+ use:"Checking information or inviting agreement. The tag repeats the auxiliary and reverses the polarity.",
+ ex:[["You're coming, aren't you?","positive + negative"],["He doesn't smoke, does he?","negative + positive"]]},
+{id:"negation",c:"sent",label:"Negation",
+ form:"auxiliary + not · no + noun · never",
+ use:"English allows only one negative per clause. Use 'do/does/did + not' when there is no other auxiliary.",
+ ex:[["I don't know anything.","not 'nothing' here"],["There's no milk.","no + noun"]]},
+{id:"inversion",c:"sent",label:"Inversion",
+ form:"Never / Rarely / Not only / Little + auxiliary + subject",
+ use:"A formal, emphatic structure: a negative or limiting adverbial at the front forces question word order.",
+ ex:[["Never have I seen such a mess.","emphatic"],["Not only did he lie, he also stole.","formal writing"]]},
+{id:"there-is",c:"sent",label:"there is / there are",
+ form:"there is + singular · there are + plural",
+ use:"Introduces the existence of something. The verb agrees with the noun that follows it.",
+ ex:[["There is a problem.","singular"],["There were many people.","plural, past"]]},
+
+/* ---- prepositions ---- */
+{id:"prep-time",c:"prep",label:"Prepositions of time",
+ form:"at (clock time) · on (days, dates) · in (months, years, longer periods)",
+ use:"Three levels of precision, from the most precise (at) to the broadest (in). No preposition before next / last / every.",
+ ex:[["at 6 o'clock, at night","precise"],["on Monday, on 3 May","day"],["in July, in 2020, in the morning","period"]]},
+{id:"prep-place",c:"prep",label:"Prepositions of place",
+ form:"at (point) · on (surface) · in (enclosed space)",
+ use:"Same precision logic as time: a point, a surface, then a volume.",
+ ex:[["at the door","point"],["on the wall","surface"],["in the box","inside"]]},
+{id:"dep-prep",c:"prep",label:"Dependent prepositions",
+ form:"verb / adjective / noun + fixed preposition",
+ use:"Fixed combinations that must be memorised; a gerund always follows the preposition.",
+ ex:[["depend on, good at, interested in","fixed pairs"],["She's good at drawing.","gerund after preposition"]]},
+{id:"phrasal",c:"prep",label:"Phrasal verbs",
+ form:"verb + particle (+ preposition) · separable or inseparable",
+ use:"The particle changes the meaning entirely. With separable verbs a pronoun object must go in the middle.",
+ ex:[["give up = quit","idiomatic meaning"],["Turn it off.","pronoun goes in the middle"],["I ran into Tom.","inseparable — met by chance"]]}
+];
+
+/* explicit cross-cluster links (inside a cluster links are generated automatically) */
+const CROSS = [
+  ["pres-perf","past-simple"],["pres-perf","pres-perf-cont"],["past-simple","past-perf"],
+  ["past-simple","used-to"],["will","going-to"],["fut-cont","pres-for-future"],
+  ["pres-cont","pres-for-future"],["will","cond1"],["cond2","mod-ability"],
+  ["cond3","mod-perfect"],["cond2","wish"],["cond3","past-perf"],
+  ["mod-obligation","mod-advice"],["mod-deduction","mod-perfect"],
+  ["gerund","dep-prep"],["infinitive","purpose"],["bare-inf","mod-ability"],
+  ["participle-clause","rel-defining"],["art-a","art-the"],["art-zero","countable"],
+  ["countable","quantifiers"],["possessive","pron-personal"],["pron-relative","rel-defining"],
+  ["pron-relative","rel-nondefining"],["reported","past-perf"],["reported","reported-q"],
+  ["reported-q","questions"],["time-clauses","cond1"],["passive","passive-tenses"],
+  ["passive-report","reported"],["causative","passive"],["passive-tenses","pres-perf"],
+  ["comparative","superlative"],["so-such","too-enough"],["adv-frequency","word-order"],
+  ["questions","tags"],["negation","pron-indef"],["inversion","negation"],
+  ["there-is","art-a"],["prep-time","prep-place"],["dep-prep","phrasal"],
+  ["stative","pres-cont"],["ger-vs-inf","gerund"],["ger-vs-inf","infinitive"],
+  ["word-order","questions"],["purpose","time-clauses"],["adj-order","superlative"]
+];
+
+/* ------------------------------------------------------------------ *
+ *  LAYOUT — clusters on a Fibonacci sphere, members in a cap around
+ * ------------------------------------------------------------------ */
+const byId = Object.fromEntries(TOPICS.map(t=>[t.id,t]));
+const clusterOf = Object.fromEntries(CLUSTERS.map(c=>[c.id,c]));
+
+function rng(seed){ let s=seed>>>0; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+
+function layout(){
+  const n = CLUSTERS.length, phi = Math.PI*(3-Math.sqrt(5));
+  const centers = {};
+  CLUSTERS.forEach((cl,i)=>{
+    const y = 1 - (i/(n-1))*2, r = Math.sqrt(Math.max(0,1-y*y)), th = phi*i;
+    centers[cl.id] = [Math.cos(th)*r, y, Math.sin(th)*r];
+  });
+  CLUSTERS.forEach((cl,ci)=>{
+    const members = TOPICS.filter(t=>t.c===cl.id);
+    const w = centers[cl.id];
+    // orthonormal basis around the cluster centre
+    let a = Math.abs(w[1])<0.9 ? [0,1,0] : [1,0,0];
+    let u = norm(cross(a,w)), v = cross(w,u);
+    const rand = rng(ci*7919+13);
+    members.forEach((t,k)=>{
+      const spread = 0.30 + members.length*0.022;
+      const rho = spread*(0.35 + 0.65*Math.sqrt((k+0.6)/members.length));
+      const th  = (k*2.399) + rand()*0.5;
+      const c = Math.cos(rho), s = Math.sin(rho);
+      t.p = norm([
+        c*w[0] + s*(Math.cos(th)*u[0] + Math.sin(th)*v[0]),
+        c*w[1] + s*(Math.cos(th)*u[1] + Math.sin(th)*v[1]),
+        c*w[2] + s*(Math.cos(th)*u[2] + Math.sin(th)*v[2])
+      ]);
+    });
+  });
+}
+function cross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];}
+function norm(a){const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}
+layout();
+
+/* edges: 2 nearest neighbours inside each cluster + explicit cross links */
+const EDGES = (()=>{
+  const set = new Set(), out = [];
+  const add=(a,b)=>{ const k=a<b?a+"|"+b:b+"|"+a; if(!set.has(k)&&a!==b){set.add(k);out.push([a,b]);} };
+  CLUSTERS.forEach(cl=>{
+    const m = TOPICS.filter(t=>t.c===cl.id);
+    m.forEach(t=>{
+      m.filter(o=>o!==t)
+       .sort((x,y)=>d2(t.p,x.p)-d2(t.p,y.p))
+       .slice(0,2).forEach(o=>add(t.id,o.id));
+    });
+  });
+  CROSS.forEach(([a,b])=>{ if(byId[a]&&byId[b]) add(a,b); });
+  return out;
+})();
+function d2(a,b){return (a[0]-b[0])**2+(a[1]-b[1])**2+(a[2]-b[2])**2;}
+
+const NEIGHBOURS = {};
+TOPICS.forEach(t=>NEIGHBOURS[t.id]=[]);
+EDGES.forEach(([a,b])=>{NEIGHBOURS[a].push(b);NEIGHBOURS[b].push(a);});
+
+/* ------------------------------------------------------------------ *
+ *  STATE
+ * ------------------------------------------------------------------ */
+const KEY = "grammar-orb-learned";
+let learned = new Set(JSON.parse(localStorage.getItem(KEY) || "[]"));
+const save = ()=>localStorage.setItem(KEY, JSON.stringify([...learned]));
+
+let selected = null, hovered = null;
+let rotX = -0.15, rotY = 0, velX = 0, velY = 0.0022, zoom = 1;
+let dragging = false, lastX = 0, lastY = 0, moved = 0;
+
+/* ------------------------------------------------------------------ *
+ *  RENDER
+ * ------------------------------------------------------------------ */
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+let W=0, H=0, R=0, DPR=1;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  R = Math.min(W,H)*0.36;
+}
+window.addEventListener("resize", resize);
+
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+let COL = {};
+function readColors(){
+  COL = { fg:css("--fg"), dim:css("--dim"), accent:css("--accent"), bg:css("--bg") };
+  COL.dark = css("--bg").toLowerCase()!=="#fbfbfc";
+}
+readColors();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+
+const FONT = `"Inter",ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif`;
+const proj = {};           // id -> {x,y,z,s}
+let showLabel = new Set(); // ids drawn as a chip right now
+let chipRect = {};         // id -> [x0,y0,x1,y1], used by the hit test
+function project(){
+  const cx = W/2 + (selected ? -Math.min(190, W*0.16) : 0);
+  const cy = H/2;
+  const sinX=Math.sin(rotX), cosX=Math.cos(rotX), sinY=Math.sin(rotY), cosY=Math.cos(rotY);
+  const r = R*zoom, D = r*3.2;
+  TOPICS.forEach(t=>{
+    const [x0,y0,z0]=t.p;
+    let x = x0*cosY + z0*sinY;
+    let z = -x0*sinY + z0*cosY;
+    let y = y0*cosX - z*sinX;
+    z = y0*sinX + z*cosX;
+    const s = D/(D - z*r);
+    proj[t.id] = { x: cx + x*r*s, y: cy + y*r*s, z, s };
+  });
+  return {cx,cy};
+}
+
+function draw(){
+  project();
+  ctx.clearRect(0,0,W,H);
+
+  const focusSet = hovered || selected
+    ? new Set([hovered||selected, ...NEIGHBOURS[hovered||selected]])
+    : null;
+
+  // edges
+  EDGES.forEach(([a,b])=>{
+    const pa=proj[a], pb=proj[b];
+    const depth=(pa.z+pb.z)/2;
+    let alpha = (depth+1)/2 * 0.30 + 0.04;
+    let color = COL.dark ? "255,255,255" : "0,0,0";
+    if(focusSet){
+      const on = focusSet.has(a) && focusSet.has(b);
+      alpha = on ? 0.55 : alpha*0.25;
+    }
+    ctx.strokeStyle = `rgba(${color},${alpha})`;
+    ctx.lineWidth = focusSet && focusSet.has(a) && focusSet.has(b) ? 1.1 : 0.6;
+    ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke();
+  });
+
+  // decide which chips fit: front-most first, skip anything that collides
+  chipRect = {}; showLabel = new Set();
+  const priority = [...TOPICS].sort((a,b)=>{
+    const rank = t => (t.id===selected||t.id===hovered) ? 9 : proj[t.id].z;
+    return rank(b)-rank(a);
+  });
+  const placed = [];
+  priority.forEach(t=>{
+    const p = proj[t.id], front = (p.z+1)/2, forced = t.id===selected||t.id===hovered;
+    if(front < 0.34 && !forced) return;
+    const size = chipFont(t);
+    ctx.font = fontStr(t, size);
+    const w = ctx.measureText(t.label).width;
+    const cw = w + size*1.25, ch = size*1.85;
+    const box = [p.x-cw/2, p.y-ch/2, p.x+cw/2, p.y+ch/2];
+    const pad = 2;
+    const hit = placed.some(b=>!(box[2]+pad<b[0]||box[0]-pad>b[2]||box[3]+pad<b[1]||box[1]-pad>b[3]));
+    if(hit && !forced) return;
+    placed.push(box); showLabel.add(t.id); chipRect[t.id] = box;
+  });
+
+  // nodes back-to-front
+  const order = [...TOPICS].sort((a,b)=>proj[a.id].z-proj[b.id].z);
+  order.forEach(t=>{
+    const p = proj[t.id];
+    const front = (p.z+1)/2;                  // 0 back .. 1 front
+    let op = 0.20 + front*0.80;
+    const isFocus = focusSet ? focusSet.has(t.id) : true;
+    if(focusSet && !isFocus) op *= 0.28;
+    const isSel = selected===t.id, isHov = hovered===t.id, done = learned.has(t.id);
+    ctx.globalAlpha = op;
+
+    if(!showLabel.has(t.id)){                 // far side: quiet dot
+      const rad = (done ? 2.8 : 2.2) * p.s;
+      ctx.fillStyle = done ? COL.accent : (COL.dark ? "#6c7280" : "#9aa0ab");
+      ctx.globalAlpha = op * 0.7;
+      ctx.beginPath(); ctx.arc(p.x,p.y,rad,0,7); ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    const [x0,y0,x1,y1] = chipRect[t.id];
+    const w = x1-x0, h = y1-y0, r = h/2;
+    const size = chipFont(t);
+    const active = isSel || isHov;
+
+    // chip body — one neutral style for every topic
+    const ink = COL.dark ? "255,255,255" : "0,0,0";
+    ctx.beginPath(); ctx.roundRect(x0, y0, w, h, r);
+    ctx.fillStyle = COL.dark
+      ? `rgba(19,22,27,${0.50+front*0.25})`
+      : `rgba(255,255,255,${0.60+front*0.25})`;
+    ctx.fill();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = done
+      ? `rgba(${COL.dark?"110,231,168":"18,160,95"},${active?0.9:0.28+front*0.30})`
+      : `rgba(${ink},${active ? 0.42 : 0.07+front*0.11})`;
+    ctx.stroke();
+
+    // label
+    ctx.font = fontStr(t, size);
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = done
+      ? COL.accent
+      : active ? COL.fg : (COL.dark ? "#aeb4c0" : "#4a4f59");
+    ctx.fillText(t.label, (x0+x1)/2, p.y + size*0.06);
+
+    // selection halo
+    if(isSel){
+      ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
+      ctx.strokeStyle = COL.accent;
+      ctx.beginPath(); ctx.roundRect(x0-4, y0-4, w+8, h+8, r+4); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+function chipFont(t){
+  const p = proj[t.id];
+  return (9.4 + (p.z+1)/2*2.4) * Math.min(p.s,1.32);
+}
+function fontStr(t,size){
+  const weight = t.id===selected || t.id===hovered ? 500 : 450;
+  return `${weight} ${size.toFixed(1)}px ${FONT}`;
+}
+
+function tick(){
+  if(!dragging){
+    rotY += velY; rotX += velX;
+    velX *= 0.94;
+    const idle = selected ? 0.0007 : 0.0022;
+    velY += (idle - velY) * 0.03;
+    rotX = Math.max(-1.2, Math.min(1.2, rotX));
+  }
+  draw();
+  requestAnimationFrame(tick);
+}
+
+/* ------------------------------------------------------------------ *
+ *  INTERACTION
+ * ------------------------------------------------------------------ */
+function pick(mx,my){
+  let best=null, bz=-2;
+  TOPICS.forEach(t=>{
+    const p=proj[t.id];
+    const dx = mx-p.x, dy = my-p.y;
+    const box = chipRect[t.id];
+    const inChip = box && mx>=box[0] && mx<=box[2] && my>=box[1] && my<=box[3];
+    const inDot = !box && dx*dx+dy*dy < 11*11;
+    if((inDot||inChip) && p.z>bz){ bz=p.z; best=t.id; }
+  });
+  return best;
+}
+
+cv.addEventListener("pointerdown", e=>{
+  dragging=true; moved=0; lastX=e.clientX; lastY=e.clientY;
+  cv.classList.add("dragging"); cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener("pointermove", e=>{
+  const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  if(dragging){
+    const dx=e.clientX-lastX, dy=e.clientY-lastY;
+    moved += Math.abs(dx)+Math.abs(dy);
+    rotY += dx*0.006; rotX += dy*0.006;
+    rotX = Math.max(-1.2, Math.min(1.2, rotX));
+    velY = dx*0.006*0.6; velX = dy*0.006*0.6;
+    lastX=e.clientX; lastY=e.clientY;
+  }else{
+    const h = pick(mx,my);
+    if(h!==hovered){ hovered=h; cv.style.cursor = h? "pointer":"grab"; }
+  }
+});
+addEventListener("pointerup", e=>{
+  if(dragging && moved<5){
+    const r=cv.getBoundingClientRect();
+    const hit = pick(e.clientX-r.left, e.clientY-r.top);
+    if(hit) open(hit); else close();
+  }
+  dragging=false; cv.classList.remove("dragging");
+});
+cv.addEventListener("wheel", e=>{
+  e.preventDefault();
+  zoom = Math.max(0.6, Math.min(2.2, zoom * (e.deltaY>0 ? 0.94 : 1.06)));
+},{passive:false});
+
+/* ------------------------------------------------------------------ *
+ *  PANEL
+ * ------------------------------------------------------------------ */
+const panel = document.getElementById("panel"), pBody = document.getElementById("pBody");
+
+function open(id){
+  selected = id;
+  const t = byId[id], cl = clusterOf[t.c];
+  const rel = NEIGHBOURS[id].map(n=>`<button data-go="${n}">${byId[n].label}</button>`).join("");
+  pBody.innerHTML = `
+    <div class="tag">${cl.name}</div>
+    <h2>${t.label}</h2>
+    <div class="sec"><h3>Form</h3><p><code>${t.form}</code></p></div>
+    <div class="sec"><h3>When to use</h3><p>${t.use}</p></div>
+    <div class="sec"><h3>Examples</h3>
+      <ul class="ex">${t.ex.map(([s,n])=>`<li>${s}<span>${n}</span></li>`).join("")}</ul>
+    </div>
+    <div class="sec"><h3>Related</h3><div class="related">${rel}</div></div>
+    <button class="learnBtn ${learned.has(id)?"on":""}" id="learnBtn">
+      ${learned.has(id) ? "✓ Learned" : "Mark as learned"}
+    </button>`;
+  panel.classList.add("open");
+  document.getElementById("learnBtn").onclick = ()=>{
+    learned.has(id) ? learned.delete(id) : learned.add(id);
+    save(); updateProgress(); open(id);
+  };
+  pBody.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>open(b.dataset.go));
+}
+function close(){ selected=null; panel.classList.remove("open"); }
+document.getElementById("close").onclick = close;
+addEventListener("keydown", e=>{ if(e.key==="Escape") close(); });
+
+function updateProgress(){
+  const n = learned.size, total = TOPICS.length, pct = Math.round(n/total*100);
+  document.getElementById("pLabel").textContent = `${n} / ${total} learned`;
+  document.getElementById("pPct").textContent = pct + "%";
+  document.getElementById("pBar").style.width = pct + "%";
+}
+document.getElementById("reset").onclick = ()=>{
+  if(!learned.size) return;
+  if(confirm("Clear all learned marks?")){ learned.clear(); save(); updateProgress(); if(selected) open(selected); }
+};
+
+resize(); updateProgress(); tick();
+</script>
+</body>
+</html>
